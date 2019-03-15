@@ -26,6 +26,20 @@ config:
     percentage:
       numerator: 100
 )EOF";
+
+  const std::string header_fault_config_ =
+      R"EOF(
+name: envoy.fault
+config:
+  delay:
+    header_delay: {}
+    percentage:
+      numerator: 100
+  response_rate_limit:
+    header_limit: {}
+    percentage:
+      numerator: 100
+)EOF";
 };
 
 // Fault integration tests that should run with all protocols, useful for testing various
@@ -65,10 +79,24 @@ TEST_P(FaultIntegrationTestAllProtocols, ResponseRateLimitNoTrailers) {
   simTime().sleep(std::chrono::milliseconds(63));
   decoder->waitForBodyData(1088);
 
-  // Advance time and wait for a ticks worth of data and end stream.
+  // Advance time and wait for a tick worth of data and end stream.
   simTime().sleep(std::chrono::milliseconds(63));
   decoder->waitForBodyData(1152);
   decoder->waitForEndStream();
+}
+
+// fixfix
+TEST_P(FaultIntegrationTestAllProtocols, HeaderFaultConfig) {
+  initializeFilter(header_fault_config_);
+  codec_client_ = makeHttpConnection(makeClientConnection(lookupPort("http")));
+  Http::TestHeaderMapImpl request_headers{{":method", "GET"},
+                                          {":path", "/test/long/url"},
+                                          {":scheme", "http"},
+                                          {":authority", "host"},
+                                          {"x-envoy-throttle-request-latency", "200"},
+                                          {"x-envoy-throttle-response-throughput", "1"}};
+  IntegrationStreamDecoderPtr decoder = codec_client_->makeHeaderOnlyRequest(request_headers);
+  waitForNextUpstreamRequest();
 }
 
 // Fault integration tests that run with HTTP/2 only, used for fully testing trailers.
@@ -90,11 +118,11 @@ TEST_P(FaultIntegrationTestHttp2, ResponseRateLimitTrailersBodyFlushed) {
   upstream_request_->encodeData(data, false);
   decoder->waitForBodyData(1024);
 
-  // Advance time and wait for a ticks worth of data.
+  // Advance time and wait for a tick worth of data.
   simTime().sleep(std::chrono::milliseconds(63));
   decoder->waitForBodyData(1088);
 
-  // Advance time and wait for a ticks worth of data.
+  // Advance time and wait for a tick worth of data.
   simTime().sleep(std::chrono::milliseconds(63));
   decoder->waitForBodyData(1152);
 
@@ -119,11 +147,11 @@ TEST_P(FaultIntegrationTestHttp2, ResponseRateLimitTrailersBodyNotFlushed) {
   upstream_request_->encodeTrailers(trailers);
   decoder->waitForBodyData(1024);
 
-  // Advance time and wait for a ticks worth of data.
+  // Advance time and wait for a tick worth of data.
   simTime().sleep(std::chrono::milliseconds(63));
   decoder->waitForBodyData(1088);
 
-  // Advance time and wait for a ticks worth of data, trailers, and end stream.
+  // Advance time and wait for a tick worth of data, trailers, and end stream.
   simTime().sleep(std::chrono::milliseconds(63));
   decoder->waitForBodyData(1152);
   decoder->waitForEndStream();
